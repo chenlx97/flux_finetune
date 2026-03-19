@@ -59,7 +59,7 @@ from diffusers.utils import (
 from diffusers.utils.hub_utils import load_or_create_model_card, populate_model_card
 from diffusers.utils.import_utils import is_torch_npu_available
 from diffusers.utils.torch_utils import is_compiled_module
-
+from data.dataset import ImagetoimageDataset
 
 if getattr(torch, "distributed", None) is not None:
     import torch.distributed as dist
@@ -597,130 +597,7 @@ def parse_args(input_args=None):
 
     return args
 
-class DreamBoothDataset(Dataset):
-    def __init__(
-        self,
-        instance_data_root,
-        instance_prompt,
-        buckets = None,
-        repeats=1,
-        center_crop=False,
-        random_flip=False,
-        size=1024,
-        max_area=1024 * 1024,
-        multiple_of=8,  # Flux VAE 需要 8 的倍数
-    ):
-        self.instance_prompt = instance_prompt
-        self.custom_instance_prompts = None
-        self.buckets = buckets
-        self.repeats = repeats
-        self.center_crop = center_crop
-        self.random_flip = random_flip
-        self.max_area = max_area
-        self.multiple_of = multiple_of
 
-        root = Path(instance_data_root)
-        distorted_dir = root / "distorted"
-        target_dir = root / "target"
-
-        self.cond_paths = sorted(list(distorted_dir.iterdir()))
-        self.instance_paths = sorted(list(target_dir.iterdir()))
-
-        if len(self.instance_paths) != len(self.cond_paths):
-            raise ValueError("distorted 和 target 数量不一致")
-        self.num_images = len(self.instance_paths)
-        self._length = self.num_images * repeats
-        self.to_tensor = transforms.ToTensor()
-        self.normalize = transforms.Normalize([0.5], [0.5])
-        self.bucket_ids = []
-        for path in tqdm(self.instance_paths, desc="Processing images"):
-            with Image.open(path) as img:
-                img = exif_transpose(img.convert("RGB"))
-                img = self.resize_if_needed(img)
-            w, h = img.size
-            bucket_idx = self.find_nearest_bucket(h, w)
-            self.bucket_ids.append(bucket_idx)
-        self.bucket_ids = self.bucket_ids * self.repeats
-
-
-    def __len__(self):
-        return self._length
-
-    def __getitem__(self, index):
-        real_index = index % self.num_images
-        instance_path = self.instance_paths[real_index]
-        cond_path = self.cond_paths[real_index]
-        # 读取图像（每次访问才读）
-        with Image.open(instance_path) as img:
-            image = exif_transpose(img.convert("RGB"))
-
-        with Image.open(cond_path) as img:
-            cond_image = exif_transpose(img.convert("RGB"))
-        # 控制最大面积（防显存炸）
-        image = self.resize_if_needed(image)
-        cond_image = self.resize_if_needed(cond_image)
-        # bucket 选择
-        width, height = image.size
-        bucket_idx = self.bucket_ids[index]
-        target_h, target_w = self.buckets[bucket_idx]
-        # resize 到 bucket 尺寸
-        image = image.resize((target_w, target_h), Image.BILINEAR)
-        cond_image = cond_image.resize((target_w, target_h), Image.BILINEAR)
-        # 对齐 VAE multiple
-        image = self.align_to_multiple(image)
-        cond_image = self.align_to_multiple(cond_image)
-        # paired transform（同步裁剪+翻转）
-        image, cond_image = self.paired_transform(image, cond_image)
-
-        return {
-            "instance_images": image,     # target
-            "cond_images": cond_image,    # img2img 输入
-            "bucket_idx": bucket_idx,
-            "instance_prompt": self.instance_prompt,
-        }
-
-    # ==========================================================
-    # 工具函数
-    # ==========================================================
-
-    def resize_if_needed(self, img):
-        w, h = img.size
-        if w * h > self.max_area:
-            scale = (self.max_area / (w * h)) ** 0.5
-            new_w = int(w * scale)
-            new_h = int(h * scale)
-            img = img.resize((new_w, new_h), Image.BILINEAR)
-        return img
-
-    def align_to_multiple(self, img):
-        w, h = img.size
-        w = (w // self.multiple_of) * self.multiple_of
-        h = (h // self.multiple_of) * self.multiple_of
-        return img.resize((w, h), Image.BILINEAR)
-
-    def find_nearest_bucket(self, height, width):
-        ratios = [abs((h / w) - (height / width)) for h, w in self.buckets]
-        return ratios.index(min(ratios))
-
-    def paired_transform(self, image, cond_image):
-        # 同步随机裁剪
-        if not self.center_crop:
-            i, j, h, w = transforms.RandomCrop.get_params(
-                image, output_size=image.size[::-1]
-            )
-            image = TF.crop(image, i, j, h, w)
-            cond_image = TF.crop(cond_image, i, j, h, w)
-
-        # 同步翻转
-        if self.random_flip and random.random() < 0.5:
-            image = TF.hflip(image)
-            cond_image = TF.hflip(cond_image)
-
-        # 转 tensor + normalize 到 [-1,1]
-        image = self.normalize(self.to_tensor(image))
-        cond_image = self.normalize(self.to_tensor(cond_image))
-
-        return image, cond_image
     
 
 def collate_fn(examples):
@@ -740,10 +617,10 @@ def collate_fn(examples):
 
 
 class BucketBatchSampler(BatchSampler):
-    def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
+    def __init__(self, dataset, batch_size, drop_last):
         if batch_size <= 0:
             raise ValueError("batch_size must be > 0")
-
+        
         self.dataset = dataset
         self.batch_size = batch_size
         self.drop_last = drop_last
@@ -822,10 +699,6 @@ def main(args):
     # Disable AMP for MPS.
     if torch.backends.mps.is_available():
         accelerator.native_amp = False
-
-    if args.report_to == "wandb":
-        if not is_wandb_available():
-            raise ImportError("Make sure to install wandb if you want to use it for logging during training.")
 
     # Make one log on every process with the configuration for debugging.
     logging.basicConfig(
@@ -1157,7 +1030,7 @@ def main(args):
     logger.info(f"Using parsed aspect ratio buckets: {buckets}")
 
     # Dataset and DataLoaders creation:
-    train_dataset = DreamBoothDataset(
+    train_dataset = ImagetoimageDataset(
         instance_data_root=args.instance_data_dir,
         instance_prompt=args.instance_prompt,
         size=args.resolution,
