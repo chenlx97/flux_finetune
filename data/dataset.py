@@ -19,7 +19,6 @@ class DreamBoothDataset(Dataset):
         repeats: int = 1,
         center_crop: bool = False,
         random_flip: bool = False,
-        size: int = 1024,
         max_area: int = 1024 * 1024,
         multiple_of: int = 8,
     ):
