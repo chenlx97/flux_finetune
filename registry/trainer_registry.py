@@ -10,4 +10,6 @@ class TrainerRegistry:
 
     @classmethod
     def get(cls, name):
-        return cls._trainers.get(name)
+        if name not in cls._trainers:
+            raise ValueError(f"Trainer {name} not registered. Available: {list(cls._trainers.keys())}")
+        return cls._trainers[name]

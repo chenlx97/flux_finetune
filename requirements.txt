@@ -1,7 +1,10 @@
-torch>=2.1
-transformers>=4.40
-datasets
-omegaconf
+torch>=2.1.0
+accelerate>=0.20.0
+diffusers>=0.37.0
+transformers>=4.40.0
+peft>=0.10.0
+pillow
+torchvision
 tqdm
-numpy
-Pillow
+pyyaml
+bitsandbytes

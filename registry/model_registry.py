@@ -10,4 +10,6 @@ class ModelRegistry:
 
     @classmethod
     def get(cls, name):
-        return cls._models.get(name)
+        if name not in cls._models:
+            raise ValueError(f"Model {name} not registered. Available: {list(cls._models.keys())}")
+        return cls._models[name]
