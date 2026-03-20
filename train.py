@@ -4,13 +4,15 @@ import torch
 from accelerate import Accelerator
 from pathlib import Path
 from diffusers.optimization import get_scheduler
-from diffusers.pipelines.flux2.pipeline_flux2_klein import Flux2KleinPipeline
 # 导入项目模块
-from data.dataset import DreamBoothDataset, BucketBatchSampler, collate_fn
+from core.data.dataset import DreamBoothDataset, BucketBatchSampler, collate_fn
 from registry.model_registry import ModelRegistry
 from registry.trainer_registry import TrainerRegistry
-from models.flux.flux2_klein import Flux2KleinModel 
-from trainer.trainer import FluxTrainer
+from registry.pipeline_registry import PipelineRegistry
+from core.models.flux.flux2_klein import Flux2KleinModel 
+from core.trainer.trainer import FluxTrainer
+from core.pipeline.flux2kleinpipeline import Flux2kleinpipeline
+
 
 def load_config(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -34,31 +36,40 @@ def main():
                 else:
                     setattr(self, k, v)
     full_config = ConfigObj(config)
-
     accelerator = Accelerator(
         gradient_accumulation_steps=config['training']['gradient_accumulation_steps'],
         mixed_precision=config['model']['mixed_precision'],
     )
     
     # --- 使用 Registry 获取模型类 ---
-    ModelCls = ModelRegistry.get(config['model']['name'])
+    ModelCls = ModelRegistry.get(config['model']['model_name'])
     model_wrapper = ModelCls(
         pretrained_path=config['model']['pretrained_model_name_or_path'],
         dtype=torch.bfloat16 if config['model']['mixed_precision'] == 'bf16' else torch.float32,
         device=accelerator.device
     )
-    
     transformer = model_wrapper.transformer
     vae = model_wrapper.vae
     text_encoder = model_wrapper.text_encoder
     tokenizer = model_wrapper.tokenizer
     scheduler = model_wrapper.scheduler
-    
-    # 冻结非训练参数
     model_wrapper.set_trainable(trainable=False) # 先全部冻结
-    
+    # --- 使用 Registry 获取训练器类 ---
+    TrainerCls = TrainerRegistry.get(config['model']['trainer_name'])
+    trainer = TrainerCls(accelerator, full_config)
+    # --- 使用 Registry 获取文本编码 Pipeline ---
+    PipelineCls = PipelineRegistry.get(config['model']['pipeline_name'])
+    text_encoding_pipeline = PipelineCls(
+        config['model']['pretrained_model_name_or_path'],
+        vae=None,
+        transformer=None,
+        tokenizer=tokenizer,
+        text_encoder=text_encoder,
+        scheduler=None,
+        
+    ).pipe
     # 注入 LoRA
-    from models.lora.lora import setup_lora
+    from core.adapters.lora  import setup_lora
     setup_lora(transformer, **config.get('lora', {}))
     for name, param in transformer.named_parameters():
         if "lora" in name:
@@ -72,7 +83,6 @@ def main():
         instance_data_root=config['data']['instance_data_dir'],
         instance_prompt=config['validation']['validation_prompt'],
         buckets=buckets,
-        resolution=config['data']['resolution'],
         center_crop=config['data']['center_crop'],
         random_flip=config['data']['random_flip'],
     )
@@ -93,24 +103,6 @@ def main():
     
     # 准备
     transformer, optimizer, train_dataloader = accelerator.prepare(transformer, optimizer, train_dataloader)
-    
-    # --- 使用 Registry 获取训练器类 ---
-    TrainerCls = TrainerRegistry.get('flux_lora')
-    trainer = TrainerCls(accelerator, full_config)
-    
-    # 文本编码 Pipeline (用于训练中的 prompt 编码)
-    text_encoding_pipeline = Flux2KleinPipeline.from_pretrained(
-        config['model']['pretrained_model_name_or_path'],
-        vae=None,
-        transformer=None,
-        tokenizer=tokenizer,
-        text_encoder=text_encoder,
-        scheduler=None,
-    )
-    
-    # 这里需要预处理 prompt_embeds 以匹配原脚本逻辑，简化起见直接传入 pipeline
-    # 实际使用中建议在 dataset collate_fn 中处理或在此处预处理
-    # 为保持与原脚本一致，此处略过复杂的 prompt 缓存逻辑，直接传 pipeline 给 trainer
     
     trainer.train(
         train_dataloader=train_dataloader,

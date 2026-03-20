@@ -6,8 +6,9 @@ from pathlib import Path
 from diffusers.training_utils import compute_density_for_timestep_sampling, compute_loss_weighting_for_sd3
 from diffusers.pipelines.flux2.pipeline_flux2_klein import Flux2KleinPipeline
 from registry.trainer_registry import TrainerRegistry
-from models.lora.lora import get_lora_state_dict
+from core.adapters.lora import get_lora_state_dict
 from diffusers.training_utils import _collate_lora_metadata
+from registry.pipeline_registry import PipelineRegistry
 
 @TrainerRegistry.register('flux2_lora')
 class FluxTrainer:
@@ -171,16 +172,10 @@ class FluxTrainer:
             self._save_lora(transformer, "final")
             
     def _save_lora(self, transformer, name):
-        from diffusers.pipelines.flux2.pipeline_flux2_klein import Flux2KleinPipeline
         save_path = os.path.join(self.config.training.output_dir, name)
         os.makedirs(save_path, exist_ok=True)
-        
-        transformer_lora_layers = get_lora_state_dict(transformer)
-        modules_to_save = {"transformer": transformer}
-        
-        Flux2KleinPipeline.save_lora_weights(
-            save_directory=save_path,
-            transformer_lora_layers=transformer_lora_layers,
-            **_collate_lora_metadata(modules_to_save),
-        )
+        PipelineCls = PipelineRegistry.get(self.config['model']['pipeline_name'])
+        PipelineCls().save_lora_weights(save_path, transformer)
         print(f"Saved checkpoint to {save_path}")
+
+        

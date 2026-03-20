@@ -47,7 +47,7 @@ class DreamBoothDataset(Dataset):
         self.normalize = transforms.Normalize([0.5], [0.5])
 
         self.bucket_ids = []
-        for path in tqdm(self.instance_paths, desc="Processing images"):
+        for path in tqdm(self.instance_paths[:1], desc="Processing images"):
             with Image.open(path) as img:
                 img = exif_transpose(img.convert("RGB"))
                 img = self.resize_if_needed(img)

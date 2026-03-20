@@ -1,6 +1,8 @@
 model:
-  name: "flux2_klein"
-  pretrained_model_name_or_path: "/data/clx/control-lora-v2-master/ckpt/FLUX.2-klein-base-9B"
+  model_name: "flux2_klein"
+  trainer_name: "flux2_lora"
+  pipeline_name: "flux2kleinpipeline"
+  pretrained_model_name_or_path: "/data/clx/control-lora-v2-master/ckpt/FLUX.2-klein-base-4B"
   revision: null
   variant: null
   mixed_precision: "bf16"
