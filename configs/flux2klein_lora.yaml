@@ -7,8 +7,10 @@ model:
   variant: null
   mixed_precision: "bf16"
   enable_npu_flash_attention: false
+  max_sequence_length: 512
 
 data:
+  data_json: "/data/clx/data/wenli_data/tile_flux2_klein/resolution512/train.jsonl"
   instance_data_dir: "/data/clx/data/wenli_data/tile_flux2_klein/resolution512"
   image_column: "image"
   cond_image_column: "target"
@@ -22,6 +24,7 @@ data:
 
 training:
   output_dir: "/data/clx/tmp/flux-dreambooth-lora"
+  off_load: True
   num_train_epochs: 200
   max_train_steps: null
   checkpointing_steps: 500

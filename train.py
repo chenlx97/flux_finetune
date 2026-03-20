@@ -12,7 +12,7 @@ from core.adapters.lora  import setup_lora
 from core.models.flux.flux2_klein import Flux2KleinModel 
 from core.trainer.trainer import FluxTrainer
 from core.pipeline.flux2kleinpipeline import Flux2kleinpipeline
-
+from core.cache.textprecompute import TextPrecompute
 
 def load_config(config_path):
     with open(config_path, 'r', encoding='utf-8') as f:
@@ -68,25 +68,22 @@ def main():
         scheduler=None,
         
     ).pipe
-    # 注入 LoRA
-    
+    text_embeding = TextPrecompute(text_encoding_pipeline,config,device=accelerator.device).run()
     setup_lora(transformer, **config.get('lora', {}))
     for name, param in transformer.named_parameters():
         if "lora" in name:
             param.requires_grad = True
-            
+    
     # 训练样本尺寸设置
     buckets_str = config['data']['aspect_ratio_buckets']
     buckets = [tuple(map(int, b.split(','))) for b in buckets_str.split(';')]
     
     dataset = DreamBoothDataset(
-        instance_data_root=config['data']['instance_data_dir'],
-        instance_prompt=config['validation']['validation_prompt'],
+        config=config,
         buckets=buckets,
-        center_crop=config['data']['center_crop'],
-        random_flip=config['data']['random_flip'],
+        text_emb = text_embeding
     )
-    
+
     batch_sampler = BucketBatchSampler(dataset, batch_size=config['data']['train_batch_size'], drop_last=True)
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_sampler=batch_sampler, collate_fn=collate_fn,

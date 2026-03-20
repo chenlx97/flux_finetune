@@ -9,86 +9,70 @@ from torch.utils.data import Dataset, BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
+from utils.make_datacsv import load_dataset
+
 
 class DreamBoothDataset(Dataset):
+    
     def __init__(
         self,
-        instance_data_root: str,
-        instance_prompt: str,
-        buckets: List[Tuple[int, int]],
-        repeats: int = 1,
-        center_crop: bool = False,
-        random_flip: bool = False,
+        config,
+        buckets,
+        text_emb = None,
         max_area: int = 1024 * 1024,
         multiple_of: int = 8,
     ):
-        self.instance_prompt = instance_prompt
+
+        self.config = config
         self.buckets = buckets
-        self.repeats = repeats
-        self.center_crop = center_crop
-        self.random_flip = random_flip
         self.max_area = max_area
         self.multiple_of = multiple_of
+        self.text_emb = text_emb
 
-        root = Path(instance_data_root)
-        distorted_dir = root / "distorted"
-        target_dir = root / "target"
-
-        self.cond_paths = sorted(list(distorted_dir.iterdir()))
-        self.instance_paths = sorted(list(target_dir.iterdir()))
-
-        if len(self.instance_paths) != len(self.cond_paths):
-            raise ValueError("distorted 和 target 数量不一致")
-
-        self.num_images = len(self.instance_paths)
-        self._length = self.num_images * repeats
+        self.data_list = load_dataset(self.config["data"]["data_json"])
+        self.num_images = len(self.data_list)
+        self._length = self.num_images
 
         self.to_tensor = transforms.ToTensor()
         self.normalize = transforms.Normalize([0.5], [0.5])
-
-        self.bucket_ids = []
-        for path in tqdm(self.instance_paths[:1], desc="Processing images"):
-            with Image.open(path) as img:
-                img = exif_transpose(img.convert("RGB"))
-                img = self.resize_if_needed(img)
-            w, h = img.size
-            bucket_idx = self.find_nearest_bucket(h, w)
-            self.bucket_ids.append(bucket_idx)
-        self.bucket_ids = self.bucket_ids * self.repeats
+        self.bucket_ids = None
 
     def __len__(self):
         return self._length
 
     def __getitem__(self, index):
         real_index = index % self.num_images
-        instance_path = self.instance_paths[real_index]
-        cond_path = self.cond_paths[real_index]
 
-        with Image.open(instance_path) as img:
-            image = exif_transpose(img.convert("RGB"))
-        with Image.open(cond_path) as img:
-            cond_image = exif_transpose(img.convert("RGB"))
+        target_path = self.data_list[real_index]['target']
+        cond_path = self.data_list[real_index]['condition']
+        prompt = self.data_list[real_index]['prompt']
 
-        image = self.resize_if_needed(image)
-        cond_image = self.resize_if_needed(cond_image)
-
-        width, height = image.size
         bucket_idx = self.bucket_ids[index]
         target_h, target_w = self.buckets[bucket_idx]
 
-        image = image.resize((target_w, target_h), Image.BILINEAR)
-        cond_image = cond_image.resize((target_w, target_h), Image.BILINEAR)
+        with Image.open(target_path) as img:
+            target_image = exif_transpose(img.convert("RGB"))
+        target_image = self.resize_if_needed(target_image)
+        target_image = target_image.resize((target_w, target_h), Image.BILINEAR)
+        target_image = self.align_to_multiple(target_image)
+        target_image = self.normalize(self.to_tensor(target_image))
 
-        image = self.align_to_multiple(image)
-        cond_image = self.align_to_multiple(cond_image)
+        if cond_path:
+            with Image.open(cond_path) as img:
+                cond_image = exif_transpose(img.convert("RGB"))
+            cond_image = self.resize_if_needed(cond_image)
+            cond_image = cond_image.resize((target_w, target_h), Image.BILINEAR)
+            cond_image = self.align_to_multiple(cond_image)
+            cond_image = self.normalize(self.to_tensor(cond_image))
+        else:
+            cond_image = None
 
-        image, cond_image = self.paired_transform(image, cond_image)
-
+        prompt_emb = self.text_emb.load(prompt)
         return {
-            "instance_images": image,
+            "target_image": target_image,
             "cond_images": cond_image,
             "bucket_idx": bucket_idx,
-            "instance_prompt": self.instance_prompt,
+            "prompt_emb": prompt_emb,
         }
 
     def resize_if_needed(self, img):
@@ -110,19 +94,18 @@ class DreamBoothDataset(Dataset):
         ratios = [abs((h / w) - (height / width)) for h, w in self.buckets]
         return ratios.index(min(ratios))
 
-    def paired_transform(self, image, cond_image):
-        if not self.center_crop:
-            i, j, h, w = transforms.RandomCrop.get_params(image, output_size=image.size[::-1])
-            image = TF.crop(image, i, j, h, w)
-            cond_image = TF.crop(cond_image, i, j, h, w)
-
-        if self.random_flip and random.random() < 0.5:
-            image = TF.hflip(image)
-            cond_image = TF.hflip(cond_image)
-
-        image = self.normalize(self.to_tensor(image))
-        cond_image = self.normalize(self.to_tensor(cond_image))
-        return image, cond_image
+    def get_bucket_ids(self):
+        if self.bucket_ids is None:
+            self.bucket_ids = []
+            for data in tqdm(self.data_list[:1], desc="Processing images"):
+                target_path = data["target"]
+                with Image.open(target_path) as img:
+                    img = exif_transpose(img.convert("RGB"))
+                    img = self.resize_if_needed(img)
+                w, h = img.size
+                bucket_idx = self.find_nearest_bucket(h, w)
+                self.bucket_ids.append(bucket_idx)
+        return self.bucket_ids
 
 class BucketBatchSampler(BatchSampler):
     def __init__(self, dataset: DreamBoothDataset, batch_size: int, drop_last: bool = False):
@@ -153,12 +136,15 @@ class BucketBatchSampler(BatchSampler):
             return (total + self.batch_size - 1) // self.batch_size
 
 def collate_fn(examples):
-    pixel_values = [example["instance_images"] for example in examples]
-    prompts = [example["instance_prompt"] for example in examples]
+    pixel_values = [example["target_image"] for example in examples]
+    prompt_emb = [example["prompt_emb"] for example in examples]
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
-    batch = {"pixel_values": pixel_values, "prompts": prompts}
+    prompt_emb = torch.stack(prompt_emb)
+    prompt_emb = prompt_emb.to(memory_format=torch.contiguous_format).float() 
+      
+    batch = {"pixel_values": pixel_values, "prompt_emb": prompt_emb}
     if any("cond_images" in example for example in examples):
         cond_pixel_values = [example["cond_images"] for example in examples]
         cond_pixel_values = torch.stack(cond_pixel_values)
