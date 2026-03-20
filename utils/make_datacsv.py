@@ -27,14 +27,14 @@ def build_dataset(
                 assert os.path.basename(cond_file) == os.path.basename(tgt_file), f"文件名不匹配: {cond_file} vs {tgt_file}"
                 if prompt_single:
                     data = {
-                        "target": f"{target_dir}/{tgt_file}",
-                        "condition": f"{condition_dir}/{cond_file}",
+                        "target": tgt_file,
+                        "condition": cond_file,
                         "prompt": prompt_single
                     }
                 else:
                     data = {
-                        "target": f"{target_dir}/{tgt_file}",
-                        "condition": f"{condition_dir}/{cond_file}",
+                        "target": tgt_file,
+                        "condition": cond_file,
                         "prompt": os.path.basename(tgt_file).split('.')[0]
                     }
 
@@ -44,13 +44,13 @@ def build_dataset(
             for tgt_file in target_files:
                 if prompt_single:
                     data = {
-                        "target": f"{target_dir}/{tgt_file}",
+                        "target": tgt_file,
                         "condition": None,
                         "prompt": prompt_single
                     }
                 else:
                     data = {
-                        "target": f"{target_dir}/{tgt_file}",
+                        "target": tgt_file,
                         "condition": None,
                         "prompt": os.path.basename(tgt_file).split('.')[0]
                     }

@@ -3,6 +3,7 @@ import yaml
 import torch
 from accelerate import Accelerator
 from diffusers.optimization import get_scheduler
+from diffusers.training_utils import free_memory
 # 导入项目模块
 from core.data.dataset import DreamBoothDataset, BucketBatchSampler, collate_fn
 from registry.model_registry import ModelRegistry
@@ -10,7 +11,7 @@ from registry.trainer_registry import TrainerRegistry
 from registry.pipeline_registry import PipelineRegistry
 from core.adapters.lora  import setup_lora
 from core.models.flux.flux2_klein import Flux2KleinModel 
-from core.trainer.trainer import FluxTrainer
+from core.trainer.trainer import Flux2KelinImage2ImageTrainer
 from core.pipeline.flux2kleinpipeline import Flux2kleinpipeline
 from core.cache.textprecompute import TextPrecompute
 
@@ -20,7 +21,7 @@ def load_config(config_path):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="configs/flux2klein_lora.yaml")
+    parser.add_argument("--config", type=str, default="configs/flux2kleinimage2image_lora.yaml")
     return parser.parse_args()
 
 def main():
@@ -54,10 +55,11 @@ def main():
     tokenizer = model_wrapper.tokenizer
     scheduler = model_wrapper.scheduler
     model_wrapper.set_trainable(trainable=False) # 先全部冻结
+    model_wrapper.to(accelerator.device)
     # --- 使用 Registry 获取训练器类 ---
     TrainerCls = TrainerRegistry.get(config['model']['trainer_name'])
     trainer = TrainerCls(accelerator, full_config)
-    # --- 使用 Registry 获取文本编码 Pipeline ---
+    # --- 获取文本编码---
     PipelineCls = PipelineRegistry.get(config['model']['pipeline_name'])
     text_encoding_pipeline = PipelineCls(
         config['model']['pretrained_model_name_or_path'],
@@ -68,13 +70,14 @@ def main():
         scheduler=None,
         
     ).pipe
-    text_embeding = TextPrecompute(text_encoding_pipeline,config,device=accelerator.device).run()
-    setup_lora(transformer, **config.get('lora', {}))
-    for name, param in transformer.named_parameters():
-        if "lora" in name:
-            param.requires_grad = True
-    
-    # 训练样本尺寸设置
+    text_embeding = TextPrecompute(text_encoding_pipeline,config,device=accelerator.device)
+    text_embeding.run()
+
+    text_encoding_pipeline = text_encoding_pipeline.to("cpu")
+    del text_encoder, tokenizer
+    free_memory()
+
+    # --- 数据加载---
     buckets_str = config['data']['aspect_ratio_buckets']
     buckets = [tuple(map(int, b.split(','))) for b in buckets_str.split(';')]
     
@@ -84,36 +87,44 @@ def main():
         text_emb = text_embeding
     )
 
-    batch_sampler = BucketBatchSampler(dataset, batch_size=config['data']['train_batch_size'], drop_last=True)
+    batch_sampler = BucketBatchSampler(dataset, batch_size=config['training']['train_batch_size'], drop_last=True)
     train_dataloader = torch.utils.data.DataLoader(
         dataset, batch_sampler=batch_sampler, collate_fn=collate_fn,
         num_workers=config['data']['dataloader_num_workers']
     )
     
-    # 优化器
+    # --- 优化器---
+    setup_lora(transformer, **config.get('lora', {}))
+    transformer_lora_parameters = [p for p in transformer.parameters() if p.requires_grad]
     optimizer = torch.optim.AdamW(
-        filter(lambda p: p.requires_grad, transformer.parameters()),
+        transformer_lora_parameters,
         lr=config['training']['learning_rate'],
         betas=(config['training']['adam_beta1'], config['training']['adam_beta2']),
         weight_decay=config['training']['adam_weight_decay'],
     )
+    trainable = sum(p.numel() for p in transformer.parameters() if p.requires_grad)
+    total = sum(p.numel() for p in transformer.parameters())
+    print(f"Trainable: {trainable}, Total: {total}, Ratio: {trainable/total:.6f}")
     
-    # 准备
-    transformer, optimizer, train_dataloader = accelerator.prepare(transformer, optimizer, train_dataloader)
+    lr_scheduler=get_scheduler(
+            config['training']['lr_scheduler'],
+            optimizer=optimizer,
+            num_warmup_steps=config['training']['lr_warmup_steps'],
+            num_training_steps=config['training']['max_train_steps'],
+            num_cycles=config['training']['lr_num_cycles'],
+            power=config['training']['lr_power'],
+        )
+
+    # --- 进入训练---
+    transformer, optimizer, train_dataloader,lr_scheduler = accelerator.prepare(transformer, optimizer, train_dataloader,lr_scheduler)
     
     trainer.train(
         train_dataloader=train_dataloader,
         transformer=transformer,
         optimizer=optimizer,
-        lr_scheduler=get_scheduler(
-            config['training']['lr_scheduler'],
-            optimizer=optimizer,
-            num_warmup_steps=config['training']['lr_warmup_steps'],
-            num_training_steps=config['training']['max_train_steps']
-        ),
+        lr_scheduler=lr_scheduler,
         noise_scheduler=scheduler,
         vae=vae,
-        text_encoding_pipeline=text_encoding_pipeline,
         validation_fn=None
     )
 

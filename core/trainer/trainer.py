@@ -10,15 +10,15 @@ from core.adapters.lora import get_lora_state_dict
 from diffusers.training_utils import _collate_lora_metadata
 from registry.pipeline_registry import PipelineRegistry
 
-@TrainerRegistry.register('flux2_lora')
-class FluxTrainer:
+@TrainerRegistry.register('flux2kelinimage2image_lora')
+class Flux2KelinImage2ImageTrainer:
     def __init__(self, accelerator: Accelerator, config):
         self.accelerator = accelerator
         self.config = config
         self.global_step = 0
         
     def train(self, train_dataloader, transformer, optimizer, lr_scheduler, noise_scheduler, 
-              vae, text_encoding_pipeline, validation_fn=None):
+              vae, validation_fn=None):
         transformer.train()
         progress_bar = tqdm(range(self.config.training.max_train_steps), disable=not self.accelerator.is_local_main_process)
         
@@ -29,8 +29,8 @@ class FluxTrainer:
             for step, batch in enumerate(train_dataloader):
                 with self.accelerator.accumulate([transformer]):
                     loss = self._train_step(
-                        batch, transformer, vae, text_encoding_pipeline, 
-                        noise_scheduler, latents_bn_mean, latents_bn_std, self.config
+                        batch, transformer, vae,
+                        noise_scheduler, latents_bn_mean, latents_bn_std
                     )
                     
                     self.accelerator.backward(loss)
@@ -60,13 +60,13 @@ class FluxTrainer:
         progress_bar.close()
         self._save_final_checkpoint(transformer)
 
-    def _train_step(self, batch, transformer, vae, text_encoding_pipeline, noise_scheduler, 
-                    latents_bn_mean, latents_bn_std, config):
+    def _train_step(self, batch, transformer, vae, noise_scheduler, 
+                    latents_bn_mean, latents_bn_std):
         device = self.accelerator.device
-        pixel_values = batch["pixel_values"].to(device)
-        cond_pixel_values = batch["cond_pixel_values"].to(device)
-        prompts = batch["prompts"]
-        
+        pixel_values = batch["pixel_values"].to(device=device,dtype=vae.dtype)
+        prompt_embeds = batch["prompt_emb"].to(device=device,dtype=vae.dtype)
+        text_ids = batch["text_ids"].to(device=device)
+        cond_pixel_values = batch["cond_pixel_values"].to(device=device,dtype=vae.dtype)
         # 1. Encode latents
         model_input = vae.encode(pixel_values).latent_dist.mode()
         cond_model_input = vae.encode(cond_pixel_values).latent_dist.mode()
@@ -89,11 +89,11 @@ class FluxTrainer:
         bsz = model_input.shape[0]
         
         u = compute_density_for_timestep_sampling(
-            weighting_scheme=config.training.weighting_scheme,
+            weighting_scheme=self.config.training.weighting_scheme,
             batch_size=bsz,
-            logit_mean=config.training.logit_mean,
-            logit_std=config.training.logit_std,
-            mode_scale=config.training.mode_scale,
+            logit_mean=self.config.training.logit_mean,
+            logit_std=self.config.training.logit_std,
+            mode_scale=self.config.training.mode_scale,
         )
         indices = (u * noise_scheduler.config.num_train_timesteps).long()
         timesteps = noise_scheduler.timesteps[indices].to(device=device)
@@ -111,15 +111,9 @@ class FluxTrainer:
         
         packed_noisy_model_input = torch.cat([packed_noisy_model_input, packed_cond_model_input], dim=1)
         model_input_ids = torch.cat([model_input_ids, cond_model_input_ids], dim=1)
-        
-        # 7. Prompt Embeds (简化：假设 batch 中已有或需外部传入，此处复用原逻辑)
-        # 实际需调用 text_encoding_pipeline.encode_prompt，为简洁此处假设 prompt_embeds 已准备好
-        # 在实际 train.py 中需要处理 text_encoding
-        prompt_embeds = batch.get("prompt_embeds", None) 
-        text_ids = batch.get("text_ids", None)
-        
+                
         # 8. Transformer Forward
-        guidance = torch.full([1], config.training.guidance_scale, device=device).expand(bsz) if transformer.config.guidance_embeds else None
+        guidance = torch.full([1], self.config.training.guidance_scale, device=device).expand(bsz) if transformer.config.guidance_embeds else None
         
         model_pred = transformer(
             hidden_states=packed_noisy_model_input,
@@ -136,7 +130,7 @@ class FluxTrainer:
         model_input_ids = model_input_ids[:, :orig_input_ids_shape[1], :]
         model_pred = Flux2KleinPipeline._unpack_latents_with_ids(model_pred, model_input_ids)
         
-        weighting = compute_loss_weighting_for_sd3(weighting_scheme=config.training.weighting_scheme, sigmas=sigmas)
+        weighting = compute_loss_weighting_for_sd3(weighting_scheme=self.config.training.weighting_scheme, sigmas=sigmas)
         target = noise - model_input
         
         loss = torch.mean(

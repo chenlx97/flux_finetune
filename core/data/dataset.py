@@ -29,7 +29,7 @@ class DreamBoothDataset(Dataset):
         self.multiple_of = multiple_of
         self.text_emb = text_emb
 
-        self.data_list = load_dataset(self.config["data"]["data_json"])
+        self.data_list = load_dataset(self.config["data"]["data_json"])[:10]
         self.num_images = len(self.data_list)
         self._length = self.num_images
 
@@ -47,7 +47,7 @@ class DreamBoothDataset(Dataset):
         cond_path = self.data_list[real_index]['condition']
         prompt = self.data_list[real_index]['prompt']
 
-        bucket_idx = self.bucket_ids[index]
+        bucket_idx = self.get_bucket_ids()[index]
         target_h, target_w = self.buckets[bucket_idx]
 
         with Image.open(target_path) as img:
@@ -67,12 +67,14 @@ class DreamBoothDataset(Dataset):
         else:
             cond_image = None
 
-        prompt_emb = self.text_emb.load(prompt)
+        text_embeding = self.text_emb.load(prompt)
+        prompt_emb,text_ids = text_embeding["prompt_embeds"][0],text_embeding['text_ids'][0]
         return {
             "target_image": target_image,
             "cond_images": cond_image,
             "bucket_idx": bucket_idx,
             "prompt_emb": prompt_emb,
+            "text_ids": text_ids,
         }
 
     def resize_if_needed(self, img):
@@ -97,7 +99,7 @@ class DreamBoothDataset(Dataset):
     def get_bucket_ids(self):
         if self.bucket_ids is None:
             self.bucket_ids = []
-            for data in tqdm(self.data_list[:1], desc="Processing images"):
+            for data in tqdm(self.data_list, desc="Processing images"):
                 target_path = data["target"]
                 with Image.open(target_path) as img:
                     img = exif_transpose(img.convert("RGB"))
@@ -114,7 +116,7 @@ class BucketBatchSampler(BatchSampler):
         self.drop_last = drop_last
 
     def __iter__(self):
-        bucket_indices = [[] for _ in range(len(self.dataset.buckets))]
+        bucket_indices = [[] for _ in range(len(self.dataset.get_bucket_ids()))]
         for idx, bucket_idx in enumerate(self.dataset.bucket_ids):
             bucket_indices[bucket_idx].append(idx)
         all_batches = []
@@ -138,13 +140,17 @@ class BucketBatchSampler(BatchSampler):
 def collate_fn(examples):
     pixel_values = [example["target_image"] for example in examples]
     prompt_emb = [example["prompt_emb"] for example in examples]
+    text_ids = [example["text_ids"] for example in examples]
     pixel_values = torch.stack(pixel_values)
     pixel_values = pixel_values.to(memory_format=torch.contiguous_format).float()
 
     prompt_emb = torch.stack(prompt_emb)
-    prompt_emb = prompt_emb.to(memory_format=torch.contiguous_format).float() 
+    prompt_emb = prompt_emb.to(memory_format=torch.contiguous_format).float()
+
+    text_ids = torch.stack(text_ids)
+    text_ids = text_ids.to(memory_format=torch.contiguous_format).int() 
       
-    batch = {"pixel_values": pixel_values, "prompt_emb": prompt_emb}
+    batch = {"pixel_values": pixel_values, "prompt_emb": prompt_emb,"text_ids": text_ids}
     if any("cond_images" in example for example in examples):
         cond_pixel_values = [example["cond_images"] for example in examples]
         cond_pixel_values = torch.stack(cond_pixel_values)
