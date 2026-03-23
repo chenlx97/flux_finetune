@@ -1,5 +1,6 @@
 import os
 import json
+import argparse
 from glob import glob
 
 
@@ -59,15 +60,41 @@ def build_dataset(
     print(f"✅ 数据集已生成: {output_file}")
 
 if __name__ == "__main__":
+    parser = argparse.ArgumentParser(description="构建 JSONL 数据集")
 
-    target_dir = '/data/clx/data/wenli_data/tile_flux2_klein/resolution512/target'
-    condition_dir = '/data/clx/data/wenli_data/tile_flux2_klein/resolution512/distorted'
-    output_file="/data/clx/data/wenli_data/tile_flux2_klein/resolution512/train.jsonl"
-    prompt_single = "修复扭曲的建筑立面纹理，使纹理自然、清晰、结构不变"
+    parser.add_argument(
+        "--target_dir",
+        type=str,
+        required=True,
+        help="目标图片目录"
+    )
+
+    parser.add_argument(
+        "--condition_dir",
+        type=str,
+        default=None,
+        help="条件图片目录（可选）"
+    )
+
+    parser.add_argument(
+        "--output_file",
+        type=str,
+        required=True,
+        help="输出 jsonl 文件路径"
+    )
+
+    parser.add_argument(
+        "--prompt_single",
+        type=str,
+        default=None,
+        help="统一 prompt（可选）"
+    )
+
+    args = parser.parse_args()
 
     build_dataset(
-        condition_dir=condition_dir,
-        target_dir=target_dir,
-        output_file=output_file,
-        prompt_single = prompt_single
+        target_dir=args.target_dir,
+        condition_dir=args.condition_dir,
+        output_file=args.output_file,
+        prompt_single=args.prompt_single
     )

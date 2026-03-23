@@ -151,7 +151,7 @@ def collate_fn(examples):
     text_ids = text_ids.to(memory_format=torch.contiguous_format).int() 
       
     batch = {"pixel_values": pixel_values, "prompt_emb": prompt_emb,"text_ids": text_ids}
-    if any("cond_images" in example for example in examples):
+    if any(example["cond_images"] for example in examples):
         cond_pixel_values = [example["cond_images"] for example in examples]
         cond_pixel_values = torch.stack(cond_pixel_values)
         cond_pixel_values = cond_pixel_values.to(memory_format=torch.contiguous_format).float()

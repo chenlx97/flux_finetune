@@ -11,7 +11,7 @@ from registry.trainer_registry import TrainerRegistry
 from registry.pipeline_registry import PipelineRegistry
 from core.adapters.lora  import setup_lora
 from core.models.flux.flux2_klein import Flux2KleinModel 
-from core.trainer.trainer import Flux2KelinImage2ImageTrainer
+from core.trainer.trainer import Flux2KelinImage2ImageTrainer,Flux2KelinText2ImageTrainer
 from core.pipeline.flux2kleinpipeline import Flux2kleinpipeline
 from core.cache.textprecompute import TextPrecompute
 
@@ -21,7 +21,7 @@ def load_config(config_path):
 
 def parse_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument("--config", type=str, default="configs/flux2kleinimage2image_lora.yaml")
+    parser.add_argument("--config", type=str, default="configs/flux2kleintext2image_lora.yaml")
     return parser.parse_args()
 
 def main():

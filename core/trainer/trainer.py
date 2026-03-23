@@ -211,8 +211,8 @@ class Flux2KelinText2ImageTrainer:
                         if self.global_step % self.config.validation.validation_steps == 0:
                             flux2kelin_validation(self.config,transformer, self.accelerator,self.global_step)
                     
-                        if self.global_step >= self.config.training.max_train_steps:
-                            break
+                        # if self.global_step >= self.config.training.max_train_steps:
+                        #     break
 
         progress_bar.close()
         self._save_final_checkpoint(transformer)
