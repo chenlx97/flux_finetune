@@ -10,9 +10,6 @@ from registry.model_registry import ModelRegistry
 from registry.trainer_registry import TrainerRegistry
 from registry.pipeline_registry import PipelineRegistry
 from core.adapters.lora  import setup_lora
-from core.models.flux.flux2_klein import Flux2KleinModel 
-from core.trainer.trainer import Flux2KelinImage2ImageTrainer,Flux2KelinText2ImageTrainer
-from core.pipeline.flux2kleinpipeline import Flux2kleinpipeline
 from core.cache.textprecompute import TextPrecompute
 
 def load_config(config_path):
