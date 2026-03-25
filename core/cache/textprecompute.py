@@ -2,7 +2,7 @@ import os
 import torch
 import hashlib
 from tqdm import tqdm
-from utils.make_datacsv import load_dataset
+from utils.make_datajson import load_dataset
 from diffusers.training_utils import offload_models
 
 def hash_prompt(prompt: str):

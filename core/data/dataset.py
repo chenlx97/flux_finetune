@@ -9,7 +9,7 @@ from torch.utils.data import Dataset, BatchSampler
 from torchvision import transforms
 from torchvision.transforms import functional as TF
 from tqdm.auto import tqdm
-from utils.make_datacsv import load_dataset
+from utils.make_datajson import load_dataset
 
 
 class DreamBoothDataset(Dataset):

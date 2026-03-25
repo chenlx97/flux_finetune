@@ -13,24 +13,28 @@
 - [ ] 添加推理模块
 - [ ] 优化低显存训练策略
 
-
 ## Train a Lora to Flux.2-klein-text2image
 
 ## 🚀 快速开始
+
 ### 1. 环境准备
-    git clone https://github.com/yourusername/flux-finetune.git
-    cd flux-finetune
-    pip install -r requirements.txt
+
+```
+git clone https://github.com/yourusername/flux-finetune.git
+cd flux-finetune
+pip install -r requirements.txt
+```
+
 ### 2. 数据集准备
     python utils/make_datacsv.py \
     -target_dir dog/target_image \
     --output_file dog/train.jsonl \
     --prompt_single "a photo of sks dog"
-参数说明：\
--target_dir: 包含训练图像的文件夹路径。\
---output_file: 输出的训练数据列表文件路径。\
-(可选) --prompt_single: 所有图像共用的提示词。\
-(可选) --condition_dir: imagetoimage包含指导图像文件夹路径。\
+    参数说明：
+    -target_dir: 包含训练图像的文件夹路径
+    --output_file: 输出的训练数据列表文件路径。
+    (可选) --prompt\_single: 所有图像共用的提示词。
+    (可选) --condition\_dir: imagetoimage包含指导图像文件夹路径。
 ### 3. 配置训练参数
     # configs/flux2kleintext2image_lora.yaml 示例片段
     model:
