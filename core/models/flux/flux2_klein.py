@@ -45,7 +45,8 @@ class Flux2KleinModel:
     def to(self, device):
         self.vae.to(device)
         self.transformer.to(device)
-        self.text_encoder.to(device)
+        if self.text_encoder is not None:
+            self.text_encoder.to(device)
         self.device = device
         self._compute_latent_stats()
         return self
@@ -53,4 +54,5 @@ class Flux2KleinModel:
     def set_trainable(self, trainable=True):
         self.transformer.requires_grad_(trainable)
         self.vae.requires_grad_(False)
-        self.text_encoder.requires_grad_(False)
+        if self.text_encoder is not None:
+            self.text_encoder.requires_grad_(False)

@@ -52,11 +52,11 @@ def main():
     tokenizer = model_wrapper.tokenizer
     scheduler = model_wrapper.scheduler
     model_wrapper.set_trainable(trainable=False) # 先全部冻结
-    model_wrapper.to(accelerator.device)
     # --- 使用 Registry 获取训练器类 ---
     TrainerCls = TrainerRegistry.get(config['model']['trainer_name'])
     trainer = TrainerCls(accelerator, full_config)
     # --- 获取文本编码---
+    text_encoder = text_encoder.to(accelerator.device)
     PipelineCls = PipelineRegistry.get(config['model']['pipeline_name'])
     text_encoding_pipeline = PipelineCls(
         config['model']['pretrained_model_name_or_path'],
@@ -69,10 +69,14 @@ def main():
     ).pipe
     text_embeding = TextPrecompute(text_encoding_pipeline,config,device=accelerator.device)
     text_embeding.run()
-
     text_encoding_pipeline = text_encoding_pipeline.to("cpu")
     del text_encoder, tokenizer
+    if hasattr(model_wrapper, 'text_encoder'):
+        del model_wrapper.text_encoder
+    if hasattr(model_wrapper, 'tokenizer'):
+        del model_wrapper.tokenizer
     free_memory()
+    model_wrapper.to(accelerator.device)
 
     # --- 数据加载---
     buckets_str = config['data']['aspect_ratio_buckets']
