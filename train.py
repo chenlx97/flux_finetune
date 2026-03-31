@@ -60,13 +60,9 @@ def main():
     PipelineCls = PipelineRegistry.get(config['model']['pipeline_name'])
     text_encoding_pipeline = PipelineCls(
         config['model']['pretrained_model_name_or_path'],
-        vae=None,
-        transformer=None,
         tokenizer=tokenizer,
         text_encoder=text_encoder,
-        scheduler=None,
-        
-    ).pipe 
+    ).pipe
     text_embeding = TextPrecompute(text_encoding_pipeline,config,device=accelerator.device)
     text_embeding.run()
     text_encoding_pipeline = text_encoding_pipeline.to("cpu")
@@ -110,10 +106,8 @@ def main():
     lr_scheduler=get_scheduler(
             config['training']['lr_scheduler'],
             optimizer=optimizer,
-            num_warmup_steps=config['training']['lr_warmup_steps'],
             num_training_steps=config['training']['max_train_steps'],
-            num_cycles=1,
-            power=1.0,
+            num_warmup_steps=config['training']['lr_warmup_rate']*config['training']['max_train_steps'],
         )
 
     # --- 进入训练---

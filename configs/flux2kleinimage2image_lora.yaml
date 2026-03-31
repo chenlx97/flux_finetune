@@ -2,53 +2,41 @@ model:
   model_name: "flux2_klein"
   trainer_name: "flux2kelinimage2image_lora"
   pipeline_name: "flux2kleinpipeline"
-  pretrained_model_name_or_path: "/data/clx/control-lora-v2-master/ckpt/FLUX.2-klein-base-4B"
+  pretrained_model_name_or_path: "ckpt/FLUX.2-klein-base-4B"
   revision: null
   variant: null
   mixed_precision: "bf16"
-  enable_npu_flash_attention: false
   max_sequence_length: 512
 
 data:
-  data_json: "/data/clx/data/wenli_data/tile_flux2_klein/resolution512/train.jsonl"
+  data_json: "./train.jsonl"
   resolution: 768
-  center_crop: false
-  random_flip: true
   dataloader_num_workers: 0
   aspect_ratio_buckets: "768,768"
 
 training:
-  output_dir: "/data/clx/tmp/flux-dreambooth-lora2"
-  off_load: True
-  num_train_epochs: 200
+  output_dir: "./flux-dreambooth-lora2"
   max_train_steps: 5000
   checkpointing_steps: 200
-  checkpoints_total_limit: 20
+  train_batch_size: 2
   gradient_accumulation_steps: 2
-  gradient_checkpointing: true
   learning_rate: 5.0e-5
   lr_scheduler: "cosine"
-  lr_warmup_steps: 1000
+  lr_warmup_rate: 0.02
   optimizer: "AdamW"
   adam_beta1: 0.9
   adam_beta2: 0.999
   adam_weight_decay: 1.0e-04
   max_grad_norm: 1.0
-  seed: null
-  lr_num_cycles: 1
-  lr_power: 1.0
   weighting_scheme: null
   logit_mean: 0.0
   logit_std: 1.0
   mode_scale: 1.29
-  train_batch_size: 2
 
 validation:
-  validation_prompt: "修复扭曲的建筑立面纹理，使纹理自然、清晰、结构不变"
-  validation_image: "/code/control-lora-v2-master/test/tile/image/Image1.png"
-  num_validation_images: 4
+  validation_prompt: " "
+  validation_image: "image/Image.png"
   validation_steps: 200
-  skip_final_inference: false
   seed: 5534331
 
 lora:

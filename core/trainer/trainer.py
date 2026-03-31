@@ -22,7 +22,7 @@ class Flux2KelinImage2ImageTrainer:
         progress_bar = tqdm(range(self.config.training.max_train_steps), disable=not self.accelerator.is_local_main_process)
         # 获取 VAE 统计量
         latents_bn_mean, latents_bn_std = self._get_latent_stats(vae)
-        for epoch in range(self.config.training.num_train_epochs):
+        for epoch in range(self.config.training.max_train_steps):
             for step, batch in enumerate(train_dataloader):
                 with self.accelerator.accumulate([transformer]):
                     loss = self._train_step(
@@ -185,7 +185,7 @@ class Flux2KelinText2ImageTrainer:
         progress_bar = tqdm(range(self.config.training.max_train_steps), disable=not self.accelerator.is_local_main_process)
         # 获取 VAE 统计量
         latents_bn_mean, latents_bn_std = self._get_latent_stats(vae)
-        for epoch in range(self.config.training.num_train_epochs):
+        for epoch in range(self.config.training.max_train_steps):
             for step, batch in enumerate(train_dataloader):
                 with self.accelerator.accumulate([transformer]):
                     loss = self._train_step(

@@ -26,7 +26,7 @@ class TextPrecompute:
     @torch.no_grad()
     def _encode(self, prompt):
 
-        with offload_models(self.pipeline, device=self.device, offload=self.config["training"]["off_load"]):
+        with offload_models(self.pipeline, device=self.device):
             prompt_embeds, text_ids = self.pipeline.encode_prompt(
                 prompt=prompt,
                 max_sequence_length=self.max_sequence_length,
