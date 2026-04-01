@@ -26,7 +26,17 @@ cd flux-finetune
 pip install -r requirements.txt
 ```
 
-### 2. 数据集准备
+### 2. 权重和数据集准备
+
+现在让我们获取weight file。在这个例子中，我们将使用FLUX.2-klein-base-4B作为base权重: <https://huggingface.co/black-forest-labs/FLUX.2-klein-base-4B>
+
+```
+pip install "huggingface_hub[cli]"
+export HF_ENDPOINT=https://hf-mirror.com  # 可选 配置镜像站
+hf download black-forest-labs/FLUX.2-klein-base-4B --local-dir ckpt/FLUX.2-klein-base-4B
+```
+
+<br />
 
 现在让我们获取数据集。在这个例子中，我们将使用一些狗的图片: <https://huggingface.co/datasets/diffusers/dog-example>
 
@@ -35,10 +45,10 @@ pip install -r requirements.txt
 ```
 from huggingface_hub import snapshot_download
 
-local_dir = "./dog"
+local_dir = "dog/target_image"
 snapshot_download(
     "diffusers/dog-example",
-    local_dir=dog/target_image, repo_type="dataset",
+    local_dir=local_dir, repo_type="dataset",
     ignore_patterns=".gitattributes",
 )
 ```
@@ -53,7 +63,7 @@ python utils/make_datajson.py \
 参数说明：
 --target_dir: 包含训练图像的文件夹路径
 --output_file: 输出的训练数据列表文件路径。
-(可选) --prompt_single: 所有图像共用的提示词。
+(可选) --prompt_single: 所有图像共用提示词。
 (imagetoimage) --condition_dir: imagetoimage包含指导图像文件夹路径。
 ```
 
