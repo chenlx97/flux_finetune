@@ -9,9 +9,10 @@
 
 ## 🚧 后续计划 (TODO)
 
-- [ ] 支持 Flux.2 Dev 全量微调 (Full Fine-tune)
-- [ ] 添加 ControlNet 支持
-- [ ] 添加推理模块
+- [ ] 支持 Flux.2 Dev lora 微调&#x20;
+- [ ] 支持 Flux.ControlNet 微调
+- [ ] 支持 Flux.2.ControlNet 微调
+- [x] 添加推理模块
 - [ ] 优化低显存训练策略
 
 ## Train a Lora to Flux.2-klein-text2image
