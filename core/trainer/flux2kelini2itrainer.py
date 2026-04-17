@@ -11,19 +11,24 @@ from utils.validation import flux2kelin_validation
 
 @TrainerRegistry.register('flux2kelinimage2image_lora')
 class Flux2KelinImage2ImageTrainer:
-    def __init__(self, accelerator: Accelerator, config):
+    def __init__(self, accelerator: Accelerator, config, logger=None):
         self.accelerator = accelerator
         self.config = config
         self.global_step = 0
+        self.logger = logger
         
-    def train(self, train_dataloader, transformer, optimizer, lr_scheduler, noise_scheduler, 
-              vae):
+    def train(self, train_dataloader, model_wrapper, optimizer, lr_scheduler, **kwargs):
+        transformer = model_wrapper.transformer
+        vae = model_wrapper.vae
+        noise_scheduler = model_wrapper.scheduler
+        
         transformer.train()
         progress_bar = tqdm(range(self.config.training.max_train_steps), disable=not self.accelerator.is_local_main_process)
         # 获取 VAE 统计量
         latents_bn_mean, latents_bn_std = self._get_latent_stats(vae)
-        for epoch in range(self.config.training.max_train_steps):
-            for step, batch in enumerate(train_dataloader):
+        
+        while self.global_step < self.config.training.max_train_steps:  
+            for _, batch in enumerate(train_dataloader):
                 with self.accelerator.accumulate([transformer]):
                     loss = self._train_step(
                         batch, transformer, vae,
@@ -169,6 +174,6 @@ class Flux2KelinImage2ImageTrainer:
             transformer_lora_layers=transformer_lora_layers,
             **(_collate_lora_metadata(modules_to_save) if modules_to_save else {})
         )
-        print(f"Saved checkpoint to {save_path}")
+        self.logger.info(f"Saved checkpoint to {save_path}")
 
 

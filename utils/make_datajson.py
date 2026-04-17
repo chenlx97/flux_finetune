@@ -79,13 +79,13 @@ def build_dataset(
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(description="构建 JSONL 数据集")
-    parser.add_argument("--target_dir", type=str, default='/data/clx/tmp/nor/room')
+    parser.add_argument("--target_dir", type=str, default='/data/clx/tmp/dog/target_image')
     parser.add_argument("--condition_dir", type=str, default=None)
-    parser.add_argument("--output_file", type=str, default='/data/clx/tmp/nor/train.jsonl')
+    parser.add_argument("--output_file", type=str, default='/data/clx/tmp/dog/train.jsonl')
     parser.add_argument(
         "--prompt_single",
         type=str,
-        default=None,
+        default=" <sks> a photo of dog",
         help="统一 prompt"
     )
     parser.add_argument(

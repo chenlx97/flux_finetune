@@ -1,20 +1,21 @@
 model:
   model_name: "flux2_klein"
-  trainer_name: "flux2kelinimage2image_lora"
-  pipeline_name: "flux2kleinpipeline"
   pretrained_model_name_or_path: "ckpt/FLUX.2-klein-base-4B"
   revision: null
   variant: null
   mixed_precision: "bf16"
   max_sequence_length: 512
+  model_adapter: "lora"
 
 data:
+  data_type: "dreamboothdataset"
   data_json: "./train.jsonl"
-  resolution: 768
+  resolution: [768, 768]
   dataloader_num_workers: 0
-  aspect_ratio_buckets: "768,768"
+  repeats: 20
 
 training:
+  trainer_name: "flux2kelinimage2image_lora"
   output_dir: "./flux-dreambooth-lora2"
   max_train_steps: 5000
   checkpointing_steps: 200
@@ -33,6 +34,7 @@ training:
   logit_std: 1.0
   mode_scale: 1.29
 
+
 validation:
   validation_prompt: " "
   validation_image: "image/Image.png"
@@ -42,7 +44,7 @@ validation:
 lora:
   rank: 16
   alpha: 32
-  dropout: 0.0
+  dropout: 0.1
   target_modules:
     - "to_k"
     - "to_q"

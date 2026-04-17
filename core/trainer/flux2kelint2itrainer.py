@@ -11,19 +11,26 @@ from utils.validation import flux2kelin_validation
 
 @TrainerRegistry.register('flux2kelintext2image_lora')
 class Flux2KelinText2ImageTrainer:
-    def __init__(self, accelerator: Accelerator, config):
+    def __init__(self, accelerator: Accelerator, config, logger=None):
         self.accelerator = accelerator
         self.config = config
         self.global_step = 0
-        
-    def train(self, train_dataloader, transformer, optimizer, lr_scheduler, noise_scheduler, 
-              vae):
+        self.logger = logger
+    def train(self, train_dataloader, model_wrapper, optimizer, lr_scheduler, **kwargs):
+        transformer = model_wrapper.transformer
+        vae = model_wrapper.vae
+        noise_scheduler = model_wrapper.scheduler
+
+        self.logger.info("Start training ....")
         transformer.train()
-        progress_bar = tqdm(range(self.config.training.max_train_steps), disable=not self.accelerator.is_local_main_process)
+        progress_bar = tqdm(range(self.config.training.max_train_steps),
+                            disable=not self.accelerator.is_local_main_process,
+                            desc="Training"
+                            )
         # 获取 VAE 统计量
         latents_bn_mean, latents_bn_std = self._get_latent_stats(vae)
-        for epoch in range(self.config.training.max_train_steps):
-            for step, batch in enumerate(train_dataloader):
+        while self.global_step < self.config.training.max_train_steps:  
+            for _, batch in enumerate(train_dataloader):
                 with self.accelerator.accumulate([transformer]):
                     loss = self._train_step(
                         batch, transformer, vae,
@@ -38,21 +45,44 @@ class Flux2KelinText2ImageTrainer:
                         optimizer.step()
                         lr_scheduler.step()
                         optimizer.zero_grad()
-                        # global_step 和进度条
                         self.global_step += 1
-                        progress_bar.update(1)
-                        # checkpoint
-                        if self.global_step % self.config.training.checkpointing_steps == 0:
-                            self._save_checkpoint(transformer)
-                        # validation
-                        if self.global_step % self.config.validation.validation_steps == 0:
-                            flux2kelin_validation(self.config,transformer, self.accelerator,self.global_step)
-                    
-                        # if self.global_step >= self.config.training.max_train_steps:
-                        #     break
-
+                        self._after_step(
+                            loss=loss,
+                            lr_scheduler=lr_scheduler,
+                            transformer=transformer,
+                            progress_bar=progress_bar
+                        )  
         progress_bar.close()
         self._save_final_checkpoint(transformer)
+        self.logger.info("Training finished.")
+
+    def _after_step(self, loss, lr_scheduler, transformer, progress_bar):
+        lr = lr_scheduler.get_last_lr()[0]
+        loss_value = loss.item()
+        progress_bar.set_postfix({
+            "loss": f"{loss_value:.4f}",
+            "lr": f"{lr:.2e}"
+        })
+        progress_bar.update(1)
+        self.logger.log_metrics(
+            {"loss": loss_value, "lr": lr},
+            step=self.global_step
+        )
+        if self.global_step % 20 == 0:
+            self.logger.info(
+                f"Step {self.global_step}/{self.config.training.max_train_steps} | "
+                f"loss={loss_value:.4f} | lr={lr:.2e}"
+            )
+            self.logger.plot_curves()
+        if self.global_step % self.config.training.checkpointing_steps == 0:
+            self._save_checkpoint(transformer)
+        if self.global_step % self.config.validation.validation_steps == 0:
+            flux2kelin_validation(
+                self.config,
+                transformer,
+                self.accelerator,
+                self.global_step
+            )
 
     def _train_step(self, batch, transformer, vae, noise_scheduler, 
                     latents_bn_mean, latents_bn_std):
@@ -158,4 +188,4 @@ class Flux2KelinText2ImageTrainer:
             transformer_lora_layers=transformer_lora_layers,
             **(_collate_lora_metadata(modules_to_save) if modules_to_save else {})
         )
-        print(f"Saved checkpoint to {save_path}")
+        self.logger.info(f"Saved checkpoint to {save_path}")

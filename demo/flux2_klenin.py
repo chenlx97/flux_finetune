@@ -46,13 +46,13 @@ def infer(
     generator = torch.Generator(device=device).manual_seed(seed)
     print(f"Calling pipeline with prompt: '{prompt}'")
     print(f"Seed: {seed}, Steps: {num_inference_steps}")
-    if isinstance(image,list):
-        image = [i[0].convert("RGB") for i in image]
-    else:
-        image = image.convert("RGB")
+    # if isinstance(image,list):
+    #     image = [i[0].convert("RGB") for i in image]
+    # else:
+    #     image = image.convert("RGB")
     image = [image]
     image = pipe(
-        image=image if len(image) > 1 else image[0],
+        # image=image if len(image) > 1 else image[0],
         prompt=prompt,
         num_inference_steps=num_inference_steps,
         generator=generator,
@@ -133,9 +133,9 @@ def create_ui():
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
-    parser.add_argument("--base_model", type=str, required=True, help="base model path")
-    parser.add_argument("--lora", type=str, required=True, help="lora weight path")
-    parser.add_argument("--port", type=int, default=7860, help="server port")
+    parser.add_argument("--base_model", type=str, default="/data/clx/control-lora-v2-master/ckpt/FLUX.2-klein-base-4B", help="base model path")
+    parser.add_argument("--lora", type=str, default="/data/clx/tmp/test_1/checkpoint-1500/pytorch_lora_weights.safetensors",  help="lora weight path")
+    parser.add_argument("--port", type=int, default=6102, help="server port")
     parser.add_argument("--adapter_weights", type=float, default=1.0, help="adapter weights")
     args = parser.parse_args()
     # --- device ---
