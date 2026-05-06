@@ -6,13 +6,14 @@
 
 - **Flux.2-klein-text2image-lora**
 - **Flux.2-klein-image2image-lora**
+- **Flux.1-ControlNet**
+
 
 ## 🚧 后续计划 (TODO)
 
-- [ ] 支持 Flux.2 Dev lora 微调&#x20;
-- [ ] 支持 Flux.ControlNet 微调
-- [ ] 支持 Flux.2.ControlNet 微调
+- [x] 支持 Flux.ControlNet 微调
 - [x] 添加推理模块
+- [ ] 支持 Flux.2 Dev lora 微调&#x20;
 - [ ] 优化低显存训练策略
 
 ## Train a Lora to Flux.2-klein-text2image
